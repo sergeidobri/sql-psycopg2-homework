@@ -1,0 +1,17 @@
+CREATE TABLE IF NOT EXISTS clients (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    surname VARCHAR(120) NOT NULL,
+    email VARCHAR(120) NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS phone_numbers (
+    id SERIAL PRIMARY KEY,
+    number VARCHAR(20) UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS client_phones (
+    client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    phone_id INTEGER NOT NULL UNIQUE REFERENCES phone_numbers(id) ON DELETE CASCADE,
+    PRIMARY KEY(client_id, phone_id)
+);
