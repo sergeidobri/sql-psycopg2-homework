@@ -401,6 +401,7 @@ email: {fio_email[2]} -> {email}")
                                 WHERE ph.number = %s;"""
 
         with conn.cursor() as cur:
+            list_clients = []
             match mode:
                 case 'n':
                     cur.execute(sql_request_select_by_name, (name, ))
@@ -408,17 +409,8 @@ email: {fio_email[2]} -> {email}")
                     if not fio_email_phone_list:  # если пустой
                         print(f"Ни один клиент с именем {name} не был найден")
                         return
-                    if len(fio_email_phone_list) > 1:
-                        print("Найдены следующие соответствия:")
-                        cnt = 1
-                        for cl_name, cl_surname, cl_email, cl_phone in fio_email_phone_list:
-                            print(f"{cnt}. {cl_name} {cl_surname}. \
-Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
-                            cnt += 1
-                    else:
-                        cl_name, cl_surname, cl_email, cl_phone = fio_email_phone_list[0]
-                        print(f"Найден клиент {cl_name} {cl_surname}. \
-Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
+                    
+                    self._print_clients_info(list_clients, fio_email_phone_list)
  
                 case 's':
                     cur.execute(sql_request_select_by_surname, (surname, ))
@@ -426,17 +418,9 @@ email: {fio_email[2]} -> {email}")
                     if not fio_email_phone_list:  # если пустой
                         print(f"Ни один клиент с фамилией {surname} не был найден")
                         return
-                    if len(fio_email_phone_list) > 1:
-                        print("Найдены следующие соответствия:")
-                        cnt = 1
-                        for cl_name, cl_surname, cl_email, cl_phone in fio_email_phone_list:
-                            print(f"{cnt}. {cl_name} {cl_surname}. \
-Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
-                            cnt += 1
-                    else:
-                        cl_name, cl_surname, cl_email, cl_phone = fio_email_phone_list[0]
-                        print(f"Найден клиент {cl_name} {cl_surname}. \
-Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
+                    
+                    self._print_clients_info(list_clients, fio_email_phone_list)
+
                 case 'ns':
                     cur.execute(sql_request_select_by_name_surname, (name, surname))
                     fio_email_phone_list = cur.fetchall()
@@ -444,17 +428,9 @@ email: {fio_email[2]} -> {email}")
                         print(f"Ни один клиент с именем {name} и \
 фамилией {surname} не был найден")
                         return
-                    if len(fio_email_phone_list) > 1:
-                        print("Найдены следующие соответствия:")
-                        cnt = 1
-                        for cl_name, cl_surname, cl_email, cl_phone in fio_email_phone_list:
-                            print(f"{cnt}. {cl_name} {cl_surname}. \
-Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
-                            cnt += 1
-                    else:
-                        cl_name, cl_surname, cl_email, cl_phone = fio_email_phone_list[0]
-                        print(f"Найден клиент {cl_name} {cl_surname}. \
-Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
+                    
+                    self._print_clients_info(list_clients, fio_email_phone_list)
+
                 case _:
                     if 'e' in mode:
                         cur.execute(sql_request_select_by_email, (email, ))
@@ -550,4 +526,43 @@ email: {fio_email[2]} -> {email}")
             return False
         
         return True
+    
+    @staticmethod
+    def _print_clients_info(list_clients, fio_email_phone_list):
+        for cl_name, cl_surname, cl_email, cl_phone in fio_email_phone_list:
+            if not list_clients:
+                list_clients.append({
+                    'name': cl_name,
+                    'surname': cl_surname,
+                    'email': cl_email,
+                    'phones': [cl_phone]
+                })
+                continue
+
+            for client in list_clients:
+                if (cl_name == client['name'] 
+                    and cl_surname == client['surname'] 
+                    and cl_email == client['email']):
+                    client['phones'].append(cl_phone)
+                    break
+            else:
+                list_clients.append({
+                    'name': cl_name,
+                    'surname': cl_surname,
+                    'email': cl_email,
+                    'phones': [cl_phone]
+                })
+        if len(list_clients) > 1:
+            cnt = 1
+            print("Найдены следующие соответствия:")
+            for client in list_clients:
+                print(f"{cnt}. {client['name']} {client['surname']}.\
+ Адрес электронной почты: {client['email']}, телефон(ы): \
+{', '.join(client['phones']) if client['phones'][0] is not None else None}")
+                cnt += 1
+        else:
+            client = list_clients[0]
+            print(f"Найден клиент {client['name']} {client['surname']}.\
+ Адрес электронной почты: {client['email']}, телефон(ы): \
+{', '.join(client['phones']) if client['phones'][0] is not None else None}")
     

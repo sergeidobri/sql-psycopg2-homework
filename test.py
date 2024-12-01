@@ -50,6 +50,9 @@ def main():
     client_manager.add_phone(1, "+79938779124")
     client_manager.add_phone(1, "+78455657789")
     client_manager.add_phone(2, "+78909884636")
+    client_manager.add_phone(2, "+79932567784")
+    client_manager.add_phone(2, "+73232456644")
+    client_manager.add_phone(2, "+74738438833")
     client_manager.add_phone(3, "+78939564645")
     # демонстрация защиты от некорректных данных:
     print("--3.errors--")
@@ -92,6 +95,7 @@ def main():
 
     # поиск клиентов
     print("--7--")
+    client_manager.find_client_by_fields(name="Кирилл")
     client_manager.find_client_by_fields(name="Виктор")
     client_manager.find_client_by_fields(surname="Киблер")
     client_manager.find_client_by_fields(name="Сергей", surname="Киблер")
