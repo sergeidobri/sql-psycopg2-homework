@@ -6,12 +6,14 @@ class Call_centre:
         self.default_params = {
             'password': password,
             'database': db_name,
-            'user': username
+            'user': username,
+            'host': 'localhost'
         }
+        self.connect_object = psycopg2.connect(**self.default_params)
+        print("Подключение к базе данных произошло успешно")
 
-    def create_tables(self, create_file='sql_request\create_requests.sql'):
-        # создание объекта подключения к бд
-        conn = psycopg2.connect(**self.default_params)
+    def create_tables(self, create_file='sql_request//create_requests.sql'):
+        conn = self.connect_object
         sql_request_existance = """SELECT EXISTS (
                                     SELECT *
                                     FROM INFORMATION_SCHEMA.TABLES 
@@ -51,12 +53,9 @@ class Call_centre:
             conn.commit()
 
         print("Таблицы были успешно созданы.")
-        conn.close()
 
-    def drop_all_tables(self, drop_file='sql_request/drop_requests.sql'):
-        # создание объекта подключения к бд
-        conn = psycopg2.connect(**self.default_params)
-
+    def drop_all_tables(self, drop_file='sql_request//drop_requests.sql'):
+        conn = self.connect_object
         with conn.cursor() as cur:
             try:
                 with open(drop_file, 'r') as drop_requests_file:
@@ -74,8 +73,7 @@ class Call_centre:
             conn.commit()
                     
         print("В базе данных больше нет таких таблиц.")
-        conn.close()
-    
+
     def add_client(self, name, surname, email):
         # валидируем значения
         if not self._validate_email(email):
@@ -87,9 +85,8 @@ class Call_centre:
         if not self._validate_surname(surname):
             print("Некорректная фамилия. Клиент не был добавлен в базу данных")
             return
-
-        # создание объекта подключения к бд
-        conn = psycopg2.connect(**self.default_params)
+        
+        conn = self.connect_object
 
         sql_find_by_email = """SELECT EXISTS (
                                 SELECT * 
@@ -108,8 +105,6 @@ class Call_centre:
             else:
                 print("Клиент с таким адресом электронной почты уже зарегистрирован")
             conn.commit()
-        
-        conn.close()
 
     def delete_client_by_fields(self, email=None, id=None):
         mode = ''
@@ -122,9 +117,8 @@ class Call_centre:
         if (not isinstance(id, int)) and id is not None:
             print("Идентификатор должен быть целым числом")
             return
-
-        # создание объекта подключения к бд
-        conn = psycopg2.connect(**self.default_params)
+        
+        conn = self.connect_object
         sql_request_delete_by_id = """DELETE FROM clients 
                                       WHERE id=%s;"""
         sql_request_delete_by_email = """DELETE FROM clients 
@@ -177,14 +171,13 @@ class Call_centre:
                         print("Такого клиента нет в базе данных")
 
             conn.commit()
-        conn.close()
     
     def add_phone(self, id, phone):
         if not self._validate_phone(phone):
             print("Номер некорректен")
             return
 
-        conn = psycopg2.connect(**self.default_params)
+        conn = self.connect_object
         sql_request_select_by_id = """SELECT name, surname 
                                         FROM clients 
                                         WHERE id=%s;"""
@@ -219,8 +212,6 @@ class Call_centre:
             print(f"Телефон {phone} был успешно связан с клиентом \
 {client_fio[0]} {client_fio[1]}")
             conn.commit()
-            
-        conn.close()
         
     def edit_client_info(self, id, email=None, name=None, surname=None):
         mode = ''
@@ -244,8 +235,8 @@ class Call_centre:
         if not mode:
             print("Обновлять нечего")
             return
-        
-        conn = psycopg2.connect(**self.default_params)
+    
+        conn = self.connect_object
         sql_request_select_by_id = """SELECT name, surname, email 
                                         FROM clients 
                                         WHERE id=%s;"""
@@ -334,10 +325,8 @@ email: {fio_email[2]} -> {email}, фамилия: {fio_email[1]} -> {surname}")
 email: {fio_email[2]} -> {email}")
             conn.commit()
 
-        conn.close()
-
     def delete_phone(self, phone):
-        conn = psycopg2.connect(**self.default_params)
+        conn = self.connect_object
         sql_request_select_by_phone = """SELECT ph.id, name, surname 
                         FROM clients AS cl
                             JOIN client_phones AS cp ON cp.client_id = cl.id
@@ -356,8 +345,6 @@ email: {fio_email[2]} -> {email}")
             print(f"Номер телефона {phone}, привязанный к пользователю \
 {name} {surname}, был успешно удален")
             conn.commit()
-
-        conn.close()
     
     def find_client_by_fields(self, name=None, surname=None, email=None, phone=None):
         mode = ''
@@ -372,7 +359,7 @@ email: {fio_email[2]} -> {email}")
         if not mode:
             print("Недостаточно информации для поиска клиента")
         
-        conn = psycopg2.connect(**self.default_params)
+        conn = self.connect_object
         sql_request_select_by_name = """SELECT name, surname, email, ph.number 
                                 FROM clients AS cl
                                 LEFT JOIN client_phones AS cp ON cp.client_id = cl.id
@@ -452,7 +439,9 @@ email: {fio_email[2]} -> {email}")
                         print(f"Найден клиент {cl_name} {cl_surname}. \
 Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
 
-        conn.close()
+    def close_connection(self):
+        print("Закрытие подключения к базе данных")
+        self.connect_object.close()
 
     # статические методы валидации полей
     @staticmethod
@@ -477,11 +466,14 @@ email: {fio_email[2]} -> {email}")
             return False
         if not email.split('@')[1]:
             return False
-        if email[0] == '.' or email[-1] == '.' or email.split('@')[0][-1] == '.' or email.split('@')[1][0] == '.':
+        if (email[0] == '.' or email[-1] == '.' 
+        or email.split('@')[0][-1] == '.' 
+        or email.split('@')[1][0] == '.'):
             return False
         if email.split('@')[-1].count('.') > 1:
             return False
-        if (not email.split('@')[-1].split('.')[0]) or (not email.split('@')[-1].split('.')[1]):
+        if ((not email.split('@')[-1].split('.')[0]) 
+        or (not email.split('@')[-1].split('.')[1])):
             return False
         
         return True
