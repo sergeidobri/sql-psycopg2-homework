@@ -11,12 +11,12 @@ def load_password(conf_path):
     return os.getenv("PASSWORD")
 
 def main():
-    path_to_confin_file = 'config.env'  # путь до файла с паролем
+    path_to_config_file = 'config.env'  # путь до файла с паролем
     name_of_database = 'call_centre'    # имя базы данных
     name_of_user = 'postgres'           # имя пользователя
 
     client_manager = Call_centre(
-        load_password(path_to_confin_file),
+        load_password(path_to_config_file),
         name_of_database,
         name_of_user
     )
@@ -107,6 +107,8 @@ def main():
     client_manager.find_client_by_fields(surname="Киблерaa")
     client_manager.find_client_by_fields(email="krivenkodsv_ka@mgtu.ru")
     client_manager.find_client_by_fields(phone="+7893956499645")
+
+    client_manager.close_connection()
 
 if __name__ == "__main__":
     main()
