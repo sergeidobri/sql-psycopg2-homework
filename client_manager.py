@@ -1,8 +1,12 @@
+"""Модуль с классом для работы с бд"""
+
 import psycopg2
+from templates import Messages, SQL
 
 
-class Call_centre:
-    def __init__(self, password, db_name, username='postgres'):
+class CallCentre:
+    """Класс для инкапсуляции работы с базой данных"""
+    def __init__(self, password: str, db_name: str, username='postgres'):
         self.default_params = {
             'password': password,
             'database': db_name,
@@ -10,16 +14,16 @@ class Call_centre:
             'host': 'localhost'
         }
         self.connect_object = psycopg2.connect(**self.default_params)
-        print("Подключение к базе данных произошло успешно")
+        print(Messages.connect_success)
 
-    def create_tables(self, create_file='sql_request//create_requests.sql'):
+    def create_tables(self, create_file='sql_request/create_requests.sql') -> None:
+        """
+        Метод для создания таблиц в базе данных. Если таблицы созданы,
+        выводится соответвующее сообщение.
+        :param create_file: [str] - путь к файлу с sql- create-запросами
+        :result: - в результате работы функции в базе создаются таблицы
+        """
         conn = self.connect_object
-        sql_request_existance = """SELECT EXISTS (
-                                    SELECT *
-                                    FROM INFORMATION_SCHEMA.TABLES 
-                                    WHERE TABLE_CATALOG = %s
-                                    AND TABLE_NAME = %s
-                                ) AS table_exists;"""
 
         with conn.cursor() as cur:
             # если все таблицы есть, то смысла создавать таблицы - нет
@@ -27,326 +31,302 @@ class Call_centre:
 
             for table in ('clients', 'client_phones', 'phone_numbers'):
                 cur.execute(
-                    sql_request_existance, 
+                    SQL.request_existance,
                     (self.default_params['database'], table)
                 )
                 flag_all_tables_exist *= cur.fetchone()[0]
 
             if flag_all_tables_exist:
-                print("Таблицы \'clients\', \'phone_numbers\' и \'client_phones\'\
- уже существуют")
+                print(Messages.tables_exist)
                 return
-            
+
             try:
-                with open(create_file, 'r') as create_requests_file:
+                with open(create_file, 'r', encoding='utf-8') as create_requests_file:
                     sql_content = create_requests_file.read().replace('\n', '')
             except FileNotFoundError:
-                print('Возникла ошибка с чтением файла со скриптами.')
+                print(Messages.error_script_file_does_not_exist)
                 return
-            
+
             sql_commands = sql_content.split(';')
 
             for sql_command in sql_commands:
                 if sql_command:  # если не пустая строка
                     cur.execute(sql_command)
-            
+
             conn.commit()
 
-        print("Таблицы были успешно созданы.")
+        print(Messages.create_tables_success)
 
-    def drop_all_tables(self, drop_file='sql_request//drop_requests.sql'):
+    def drop_all_tables(self, drop_file='sql_request/drop_requests.sql') -> None:
+        """
+        Метод для удаления таблиц из базы данных.
+        :param drop_file: [str] - путь к файлу с sql- drop-запросами
+        :result: - в результате работы функции из базы удаляются таблицы
+        """
         conn = self.connect_object
         with conn.cursor() as cur:
             try:
-                with open(drop_file, 'r') as drop_requests_file:
+                with open(drop_file, 'r', encoding='utf-8') as drop_requests_file:
                     sql_content = drop_requests_file.read().replace('\n', '')
             except FileNotFoundError:
-                print('Возникла ошибка с чтением файла со скриптами')
+                print(Messages.error_script_file_does_not_exist)
                 return
-            
+
             sql_commands = sql_content.split(';')
             for sql_command in sql_commands:
                 if sql_command:
                     sql_command += ';'
                     cur.execute(sql_command)
-            
-            conn.commit()
-                    
-        print("В базе данных больше нет таких таблиц.")
 
-    def add_client(self, name, surname, email):
+            conn.commit()
+
+        print(Messages.delete_tables_success)
+
+    def add_client(self, name: str, surname: str, email: str) -> None:
+        """
+        Метод для добавления клиента в базу данных.
+        :param name: [str] - имя клиента
+        :param surname: [str] - фамилия клиента
+        :param email: [str] - электронная почта клиента
+        :result: [None] - функция добавляет клиента в базу
+        """
         # валидируем значения
         if not self._validate_email(email):
-            print("Некорректное значение email. Клиент не был добавлен в базу данных")
+            print(Messages.error_incorrect_email)
             return
         if not self._validate_name(name):
-            print("Некорректное имя. Клиент не был добавлен в базу данных")
+            print(Messages.error_incorrect_name)
             return
         if not self._validate_surname(surname):
-            print("Некорректная фамилия. Клиент не был добавлен в базу данных")
+            print(Messages.error_incorrect_surname)
             return
-        
+
         conn = self.connect_object
 
-        sql_find_by_email = """SELECT EXISTS (
-                                SELECT * 
-                                FROM clients 
-                                WHERE email=%s
-                            );"""
-        sql_insert_request = """INSERT INTO clients(name, surname, email)
-                                    VALUES (%s, %s, %s);"""
-        
         with conn.cursor() as cur:
-            cur.execute(sql_find_by_email, (email,))
+            cur.execute(SQL.find_by_email, (email,))
             if not cur.fetchone()[0]:
+                cur.execute(SQL.insert_request, (name, surname, email))
                 print(f"Клиент {name} {surname} с адресом электронной почты \
 {email} был успешно зарегистрирован")
-                cur.execute(sql_insert_request, (name, surname, email))
             else:
-                print("Клиент с таким адресом электронной почты уже зарегистрирован")
+                print(Messages.error_client_already_exists)
             conn.commit()
 
-    def delete_client_by_fields(self, email=None, id=None):
+    def delete_client_by_fields(self, email=None, client_id=None):
+        """
+        Метод для удаления клиента из базы данных.
+        :param email: [str] - электронная почта клиента
+        :param client_id: [int] - идентификатор клиента в базе данных
+        :result: [None] - функция удаляет клиента из базы
+        """
         mode = ''
-        if email is None and id is None:
-            print("Клиента невозможно найти без идентификатора или адреса электронной почты")
-        if email is not None:
-            mode += 'e'  # удаление по id
-        if id is not None:
-            mode += 'i'  # удаление по email
-        if (not isinstance(id, int)) and id is not None:
-            print("Идентификатор должен быть целым числом")
+        if email is None and client_id is None:
+            print(Messages.error_empty_search_fields)
             return
-        
-        conn = self.connect_object
-        sql_request_delete_by_id = """DELETE FROM clients 
-                                      WHERE id=%s;"""
-        sql_request_delete_by_email = """DELETE FROM clients 
-                                        WHERE email=%s;"""
-        sql_request_delete_by_both = """DELETE FROM clients 
-                                        WHERE email=%s 
-                                        AND id=%s;"""
+        if email is not None:
+            mode += 'e'
+        if client_id is not None:
+            mode += 'i'
+        if (not isinstance(client_id, int)) and client_id is not None:
+            print(Messages.error_id_is_not_int)
+            return
 
-        sql_request_select_by_id = """SELECT name, surname 
-                                      FROM clients 
-                                      WHERE id=%s;"""
-        sql_request_select_by_email = """SELECT name, surname 
-                                        FROM clients 
-                                        WHERE email=%s;"""
-        sql_request_select_by_both = """SELECT name, surname 
-                                        FROM clients 
-                                        WHERE email=%s 
-                                        AND id=%s;"""
+        conn = self.connect_object
 
         with conn.cursor() as cur:
             match mode:
                 case 'i':
-                    cur.execute(sql_request_select_by_id, (id, ))
+                    cur.execute(SQL.select_by_id, (client_id, ))
                     fio = cur.fetchone()
                     if fio is not None:
-                        cur.execute(sql_request_delete_by_id, (id, ))
+                        cur.execute(SQL.delete_by_id, (client_id, ))
                         print(f"Клиент {fio[0]} {fio[1]} с идентификатором\
- {id} был успешно удален")
+ {client_id} был успешно удален")
                     else:
-                        print("Такого клиента нет в базе данных")
+                        print(Messages.error_client_does_not_exist)
                 case 'e':
-                    cur.execute(sql_request_select_by_email, (email, ))
+                    cur.execute(SQL.select_by_email, (email, ))
                     fio = cur.fetchone()
 
                     if fio is not None:
-                        cur.execute(sql_request_delete_by_email, (email, ))
+                        cur.execute(SQL.delete_by_email, (email, ))
                         print(f"Клиент {fio[0]} {fio[1]} с адресом электронной\
  почты {email} был успешно удален")
                     else:
-                        print("Такого клиента нет в базе данных")
+                        print(Messages.error_client_does_not_exist)
                 case 'ei':
-                    cur.execute(sql_request_select_by_both, (email, id))
+                    cur.execute(SQL.select_by_both, (email, client_id))
                     fio = cur.fetchone()
 
                     if fio is not None:
-                        cur.execute(sql_request_delete_by_both, (email, id))
+                        cur.execute(SQL.delete_by_both, (email, client_id))
                         print(f"Клиент {fio[0]} {fio[1]} с адресом электронной\
- почты {email} и идентификатором {id} был успешно удален")
+ почты {email} и идентификатором {client_id} был успешно удален")
                     else:
-                        print("Такого клиента нет в базе данных")
+                        print(Messages.error_client_does_not_exist)
 
             conn.commit()
-    
-    def add_phone(self, id, phone):
+
+    def add_phone(self, client_id: int, phone: str) -> None:
+        """
+        Метод для добавления телефона в базу данных по айди
+        :param client_id: [int] - идентификатор клиента в базе
+        :param phone: [str] - телефон
+        :result: [None] - функция добавляет телефон клиента в базу и 
+                        соединяет его с ним
+        """
         if not self._validate_phone(phone):
-            print("Номер некорректен")
+            print(Messages.error_incorrect_phone)
             return
 
         conn = self.connect_object
-        sql_request_select_by_id = """SELECT name, surname 
-                                        FROM clients 
-                                        WHERE id=%s;"""
-        sql_request_insert_phone = """INSERT INTO phone_numbers(number) 
-                                            VALUES (%s);"""
-        sql_request_select_by_phone = """SELECT id 
-                                        FROM phone_numbers 
-                                        WHERE number=%s;"""
-        sql_request_insert_client_phone = """INSERT INTO client_phones 
-                                                VALUES (%s, %s);"""
 
         with conn.cursor() as cur:
-            cur.execute(sql_request_select_by_id, (id, ))
+            cur.execute(SQL.select_by_id, (client_id, ))
             client_fio = cur.fetchone()
             if client_fio is None:
-                print("Такого клиента нет в базе данных")
+                print(Messages.error_client_does_not_exist)
                 return
 
-            cur.execute(sql_request_select_by_phone, (phone, ))
+            cur.execute(SQL.select_by_phone, (phone, ))
             if cur.fetchone() is not None:
-                print("Такой телефон уже зарегистрирован и привязан к другому клиенту")
+                print(Messages.error_phone_reserved)
                 return
-            
+
             # если существует такой клиент, то создаем телефон и связываем с ним
-            cur.execute(sql_request_insert_phone, (phone, ))
+            cur.execute(SQL.insert_phone, (phone, ))
             conn.commit()
 
-            cur.execute(sql_request_select_by_phone, (phone, ))
+            cur.execute(SQL.select_by_phone, (phone, ))
             phone_id = cur.fetchone()[0]
 
-            cur.execute(sql_request_insert_client_phone, (id, phone_id))
+            cur.execute(SQL.insert_client_phone, (client_id, phone_id))
             print(f"Телефон {phone} был успешно связан с клиентом \
 {client_fio[0]} {client_fio[1]}")
             conn.commit()
-        
-    def edit_client_info(self, id, email=None, name=None, surname=None):
+
+    def edit_client_info(self, client_id: int, email=None, name=None, surname=None) -> None:
+        """
+        Метод, изменяющий информацию о клиенте
+        :param client_id: [int] - идентификатор клиента
+        :param email: [str | None] - электронная почта
+        :param name: [str | None] - имя клиента
+        :param surname: [str | None] - фамилия клиента
+        :result: [None] - функция меняет информацию о клиенте в базе данных 
+        """
         mode = ''
-        if not isinstance(id, int):
-            print("Идентификатор должен быть целым числом")
+        if not isinstance(client_id, int):
+            print(Messages.error_id_is_not_int)
             return
         if email is not None:
             if not self._validate_email(email):
-                print("Такой email некорректен")
+                print(Messages.error_incorrect_email)
                 return
             mode += 'e'
         if name is not None:
             if not self._validate_name(name):
-                print("Такое имя некорректно")
+                print(Messages.error_incorrect_name)
                 return
             mode += 'n'
         if surname is not None:
             if not self._validate_surname(surname):
-                print("Такая фамилия некорректна")
+                print(Messages.error_incorrect_surname)
             mode += 's'
         if not mode:
-            print("Обновлять нечего")
+            print(Messages.error_nothing_to_update)
             return
-    
-        conn = self.connect_object
-        sql_request_select_by_id = """SELECT name, surname, email 
-                                        FROM clients 
-                                        WHERE id=%s;"""
-        sql_request_select_by_email = """SELECT id 
-                                        FROM clients 
-                                        WHERE email=%s;"""
 
-        sql_request_update_name = """UPDATE clients 
-                                    SET name=%s 
-                                    WHERE id=%s;"""
-        sql_request_update_surname =  """UPDATE clients 
-                                    SET surname=%s 
-                                    WHERE id=%s;"""
-        sql_request_update_email = """UPDATE clients 
-                                    SET email=%s 
-                                    WHERE id=%s;"""
-        sql_request_update_name_surname = """UPDATE clients 
-                                    SET name=%s, surname=%s 
-                                    WHERE id=%s;"""
-        sql_request_update_email_name = """UPDATE clients 
-                                    SET email=%s, name=%s 
-                                    WHERE id=%s;"""
-        sql_request_update_email_surname = """UPDATE clients 
-                                    SET email=%s, surname=%s 
-                                    WHERE id=%s;"""
-        sql_request_update_all = """UPDATE clients 
-                                    SET name=%s, surname=%s, email=%s 
-                                    WHERE id=%s;"""
+        conn = self.connect_object
 
         with conn.cursor() as cur:
-            cur.execute(sql_request_select_by_id, (id, ))
+            cur.execute(SQL.select_all_by_id, (client_id, ))
             fio_email = cur.fetchone()
             if fio_email is None:
-                print("Такого клиента нет в базе данных")
+                print(Messages.error_client_does_not_exist)
                 return
-            
+
             match mode:
                 case 'e':
-                    cur.execute(sql_request_select_by_email, (email, ))
+                    cur.execute(SQL.select_id_by_email, (email, ))
                     if cur.fetchone() is not None:
-                        print(f"Обновить адрес электронной почты невозможно. \
-Адрес {email} уже зарегистрирован")
+                        print(Messages.error_email_already_exists)
                         return
-                    cur.execute(sql_request_update_email, (email, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_email, (email, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 email: {fio_email[2]} -> {email}")
                 case 'n':
-                    cur.execute(sql_request_update_name, (name, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_name, (name, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 Имя: {fio_email[0]} -> {name}")
                 case 's':
-                    cur.execute(sql_request_update_surname, (surname, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_surname, (surname, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 Фамилия: {fio_email[1]} -> {surname}")
                 case 'en':
-                    cur.execute(sql_request_select_by_email, (email, ))
+                    cur.execute(SQL.select_id_by_email, (email, ))
                     if cur.fetchone() is not None:
-                        print(f"Обновить адрес электронной почты невозможно. \
-Адрес {email} уже зарегистрирован")
+                        print(Messages.error_email_already_exists)
                         return
-                    cur.execute(sql_request_update_email_name, (email, name, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_email_name, (email, name, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 email: {fio_email[2]} -> {email}, имя: {fio_email[0]} -> {name}")
                 case 'es':
-                    cur.execute(sql_request_select_by_email, (email, ))
+                    cur.execute(SQL.select_id_by_email, (email, ))
                     if cur.fetchone() is not None:
-                        print(f"Обновить адрес электронной почты невозможно. \
-Адрес {email} уже зарегистрирован")
+                        print(Messages.error_email_already_exists)
                         return
-                    cur.execute(sql_request_update_email_surname, (email, surname, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_email_surname, (email, surname, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 email: {fio_email[2]} -> {email}, фамилия: {fio_email[1]} -> {surname}")
                 case 'ns':
-                    cur.execute(sql_request_update_name_surname, (name, surname, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_name_surname, (name, surname, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 Имя: {fio_email[0]} -> {name}, фамилия: {fio_email[1]} -> {surname}")
                 case 'ens':
-                    cur.execute(sql_request_select_by_email, (email, ))
+                    cur.execute(SQL.select_by_email, (email, ))
                     if cur.fetchone() is not None:
-                        print(f"Обновить адрес электронной почты невозможно. \
-Адрес {email} уже зарегистрирован")
+                        print(Messages.error_email_already_exists)
                         return
-                    cur.execute(sql_request_update_all, (name, surname, email, id))
-                    print(f"Изменение данных о клиенте с идентификатором {id}. \
+                    cur.execute(SQL.update_all, (name, surname, email, client_id))
+                    print(f"Изменение данных о клиенте с идентификатором {client_id}. \
 Имя: {fio_email[0]} -> {name}, фамилия: {fio_email[1]} -> {surname}, \
 email: {fio_email[2]} -> {email}")
             conn.commit()
 
-    def delete_phone(self, phone):
+    def delete_phone(self, phone: str) -> None:
+        """
+        Метод для удаления телефона из базы
+        :param phone: [str] - телефон
+        :result: [None] - функция удаляет телефон из базы данных
+        """
         conn = self.connect_object
-        sql_request_select_by_phone = """SELECT ph.id, name, surname 
-                        FROM clients AS cl
-                            JOIN client_phones AS cp ON cp.client_id = cl.id
-                            JOIN phone_numbers AS ph ON ph.id = cp.phone_id
-                        WHERE ph.number=%s;"""
-        sql_request_delete_by_id = """DELETE FROM phone_numbers 
-                                    WHERE id=%s;"""
         with conn.cursor() as cur:
-            cur.execute(sql_request_select_by_phone, (phone, ))
+            cur.execute(SQL.select_all_by_phone, (phone, ))
             id_fio = cur.fetchone()
             if id_fio is None:
-                print("Такого телефона нет в базе данных")
+                print(Messages.error_phone_does_not_exists)
                 return
             phone_id, name, surname = id_fio
-            cur.execute(sql_request_delete_by_id, (phone_id, ))
+            cur.execute(SQL.delete_by_id, (phone_id, ))
             print(f"Номер телефона {phone}, привязанный к пользователю \
 {name} {surname}, был успешно удален")
             conn.commit()
-    
-    def find_client_by_fields(self, name=None, surname=None, email=None, phone=None):
+
+    def find_client_by_fields(
+            self,
+            name=None,
+            surname=None,
+            email=None,
+            phone=None) -> None:
+        """
+        Метод для поиска клиента по указанным полям полям
+        :param name: [str | None] - имя клиента
+        :param surname: [str | None] - фамилия клиента
+        :param email: [str | None] - электронная почта клиента
+        :param phone: [str | None] - телефон
+        :result: [None] - функция ищет клиента и выводит сообщение о результате.
+        """
         mode = ''
         if name is not None:
             mode += 'n'
@@ -357,72 +337,46 @@ email: {fio_email[2]} -> {email}")
         if phone is not None:
             mode += 'p'
         if not mode:
-            print("Недостаточно информации для поиска клиента")
-        
+            print(Messages.error_empty_client_fields)
+
         conn = self.connect_object
-        sql_request_select_by_name = """SELECT name, surname, email, ph.number 
-                                FROM clients AS cl
-                                LEFT JOIN client_phones AS cp ON cp.client_id = cl.id
-                                LEFT JOIN phone_numbers AS ph ON ph.id = cp.phone_id
-                                WHERE name = %s;"""
-        sql_request_select_by_surname = """SELECT name, surname, email, ph.number 
-                                FROM clients AS cl
-                                LEFT JOIN client_phones AS cp ON cp.client_id = cl.id
-                                LEFT JOIN phone_numbers AS ph ON ph.id = cp.phone_id
-                                WHERE surname = %s;"""
-        sql_request_select_by_name_surname = """SELECT name, surname, email, ph.number 
-                                FROM clients AS cl
-                                LEFT JOIN client_phones AS cp ON cp.client_id = cl.id
-                                LEFT JOIN phone_numbers AS ph ON ph.id = cp.phone_id
-                                WHERE name = %s
-                                AND surname = %s;"""
-        sql_request_select_by_email = """SELECT name, surname, email, ph.number 
-                                FROM clients AS cl
-                                LEFT JOIN client_phones AS cp ON cp.client_id = cl.id
-                                LEFT JOIN phone_numbers AS ph ON ph.id = cp.phone_id
-                                WHERE email = %s;"""
-        sql_request_select_by_phone = """SELECT name, surname, email, ph.number 
-                                FROM clients AS cl
-                                LEFT JOIN client_phones AS cp ON cp.client_id = cl.id
-                                LEFT JOIN phone_numbers AS ph ON ph.id = cp.phone_id
-                                WHERE ph.number = %s;"""
 
         with conn.cursor() as cur:
             list_clients = []
             match mode:
                 case 'n':
-                    cur.execute(sql_request_select_by_name, (name, ))
+                    cur.execute(SQL.search_by_name, (name, ))
                     fio_email_phone_list = cur.fetchall()
                     if not fio_email_phone_list:  # если пустой
                         print(f"Ни один клиент с именем {name} не был найден")
                         return
-                    
+
                     self._print_clients_info(list_clients, fio_email_phone_list)
- 
+
                 case 's':
-                    cur.execute(sql_request_select_by_surname, (surname, ))
+                    cur.execute(SQL.search_by_surname, (surname, ))
                     fio_email_phone_list = cur.fetchall()
                     if not fio_email_phone_list:  # если пустой
                         print(f"Ни один клиент с фамилией {surname} не был найден")
                         return
-                    
+
                     self._print_clients_info(list_clients, fio_email_phone_list)
 
                 case 'ns':
-                    cur.execute(sql_request_select_by_name_surname, (name, surname))
+                    cur.execute(SQL.search_by_name_surname, (name, surname))
                     fio_email_phone_list = cur.fetchall()
                     if not fio_email_phone_list:  # если пустой
                         print(f"Ни один клиент с именем {name} и \
 фамилией {surname} не был найден")
                         return
-                    
+
                     self._print_clients_info(list_clients, fio_email_phone_list)
 
                 case _:
                     if 'e' in mode:
-                        cur.execute(sql_request_select_by_email, (email, ))
+                        cur.execute(SQL.search_by_email, (email, ))
                         fio_email_phone = cur.fetchone()
-                        if not fio_email_phone: 
+                        if not fio_email_phone:
                             print(f"Ни один клиент с адресом эл.почты \
 {email} не был найден")
                             return
@@ -430,9 +384,9 @@ email: {fio_email[2]} -> {email}")
                         print(f"Найден клиент {cl_name} {cl_surname}. \
 Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
                     elif 'p' in mode:
-                        cur.execute(sql_request_select_by_phone, (phone, ))
+                        cur.execute(SQL.search_by_phone, (phone, ))
                         fio_email_phone = cur.fetchone()
-                        if not fio_email_phone: 
+                        if not fio_email_phone:
                             print(f"Ни один клиент с телефоном {phone} не был найден")
                             return
                         cl_name, cl_surname, cl_email, cl_phone = fio_email_phone
@@ -440,85 +394,89 @@ email: {fio_email[2]} -> {email}")
 Адрес эл.почты: {cl_email}, телефон: {cl_phone}")
 
     def close_connection(self):
-        print("Закрытие подключения к базе данных")
+        """
+        Метод для закрытия подключения к базе данных
+        """
+        print(Messages.close_connection_success)
         self.connect_object.close()
 
     # статические методы валидации полей
     @staticmethod
     def _validate_email(email):
+        result = True
         latin_alphabet = 'abcdefghijklmnopqrstuvwxyz'
         allowed_chars = latin_alphabet + '@._' + '0123456789'
 
         if '@' not in email:
-            return False
+            result = False
         if email.count('@') > 1:
-            return False
-        
+            result = False
+
         if '..' in email:
-            return False
+            result = False
         if '.' not in email:
-            return False
-        
+            result = False
+
         for letter in email:
             if letter not in allowed_chars:
-                return False
+                result = False
         if not email.split('@')[0]:
-            return False
+            result = False
         if not email.split('@')[1]:
-            return False
-        if (email[0] == '.' or email[-1] == '.' 
-        or email.split('@')[0][-1] == '.' 
+            result = False
+        if (email[0] == '.' or email[-1] == '.'
+        or email.split('@')[0][-1] == '.'
         or email.split('@')[1][0] == '.'):
-            return False
+            result = False
         if email.split('@')[-1].count('.') > 1:
-            return False
-        if ((not email.split('@')[-1].split('.')[0]) 
+            result = False
+        if ((not email.split('@')[-1].split('.')[0])
         or (not email.split('@')[-1].split('.')[1])):
-            return False
-        
-        return True
-    
+            result = False
+
+        return result
+
     @staticmethod
     def _validate_name(name):
-
+        result = True
         cyrillic_alphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
         allowed_chars = cyrillic_alphabet + cyrillic_alphabet.upper() + '- '
 
         if name[0].upper() != name[0]:
-            return False
+            result = False
         for letter in name:
             if letter not in allowed_chars:
-                return False
-        
-        return True
+                result = False
+
+        return result
 
     @staticmethod
     def _validate_surname(surname):
-
+        result = True
         cyrillic_alphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'
         allowed_chars = cyrillic_alphabet + cyrillic_alphabet.upper() + '- '
-        
+
         if surname[0].upper() != surname[0]:
-            return False
+            result = False
         for letter in surname:
             if letter not in allowed_chars:
-                return False
-        
-        return True
-    
+                result = False
+
+        return result
+
     @staticmethod
     def _validate_phone(phone):
-        
+        result = True
         if phone[0] != '+':
-            return False
+            result = False
         for digit in phone[1:]:
             if digit not in '0123456789':
-                return False
+                result = False
         if phone[1] == '7' and len(phone) != 12:
-            return False
-        
-        return True
-    
+            result = False
+
+        return result
+
     @staticmethod
     def _print_clients_info(list_clients, fio_email_phone_list):
         for cl_name, cl_surname, cl_email, cl_phone in fio_email_phone_list:
@@ -532,8 +490,8 @@ email: {fio_email[2]} -> {email}")
                 continue
 
             for client in list_clients:
-                if (cl_name == client['name'] 
-                    and cl_surname == client['surname'] 
+                if (cl_name == client['name']
+                    and cl_surname == client['surname']
                     and cl_email == client['email']):
                     client['phones'].append(cl_phone)
                     break
@@ -557,4 +515,3 @@ email: {fio_email[2]} -> {email}")
             print(f"Найден клиент {client['name']} {client['surname']}.\
  Адрес электронной почты: {client['email']}, телефон(ы): \
 {', '.join(client['phones']) if client['phones'][0] is not None else None}")
-    
